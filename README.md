@@ -15,6 +15,7 @@ import pandas as pd
 from io import BytesIO
 from io import StringIO
 
+gc = GenesisClient(site='LDNRW')
 csv = gc.download_csv('61111-07iz')
 pd.read_csv(StringIO(csv), sep=';', skiprows=8)
 
