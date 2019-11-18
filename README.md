@@ -1,3 +1,29 @@
+# Fork info
+This is a fork of:
+[GitHub - marians/genesisclient: A Genesis (DeStatis et. al.) client for Python](https://github.com/marians/genesisclient)
+
+The underlying wsdl library was migrated to `zeep` and the code was refactored. The work is still in progress.
+The downloading of data is already working. Install using:
+```
+pip install git+https://github.com/rudolf-bauer/genesisclient.git
+```
+
+You can parse the data with `pandas`. However, there is a lot of overhead.
+```
+from genesisclient.genesis_client import GenesisClient
+import pandas as pd
+from io import BytesIO
+from io import StringIO
+
+csv = gc.download_csv('61111-07iz')
+pd.read_csv(StringIO(csv), sep=';', skiprows=8)
+
+xls = gc.download_excel('61111-07iz')
+pd.read_excel(BytesIO(xls), skiprows=8)
+```
+
+# Original Readme.md
+
 genesisclient
 =============
 
