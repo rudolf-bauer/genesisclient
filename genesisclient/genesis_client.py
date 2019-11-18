@@ -1,76 +1,107 @@
+from lxml import etree
+from zeep import Client
+import requests
+import tempfile
+
+
 class GenesisClient(object):
 
-    def __init__(self, site, username=None, password=None):
-        self.sites = {
-            'DESTATIS': {
-                'webservice_url': 'https://www-genesis.destatis.de/genesisWS'
-            },
-            'LDNRW': {
-                'webservice_url': 'https://www.landesdatenbank.nrw.de/ldbnrwws'
-            },
-            'REGIONAL': {
-                'webservice_url': 'https://www.regionalstatistik.de/genesisws'
-            },
-            'BAYERN': {
-                'webservice_url': 'https://www.statistikdaten.bayern.de/genesisWS'
-            },
-            #'SACHSEN': {
-            #    'webservice_url': 'http://www.statistik.sachsen.de/...'
-            #},
-            'BILDUNG': {
-                'webservice_url': 'https://www.bildungsmonitoring.de/bildungws'
-            }
+    sites = {
+        'DESTATIS': {
+            'webservice_url': 'https://www-genesis.destatis.de/genesisWS'
+        },
+        'LDNRW': {
+            'webservice_url': 'https://www.landesdatenbank.nrw.de/ldbnrwws'
+        },
+        'REGIONAL': {
+            'webservice_url': 'https://www.regionalstatistik.de/genesisws'
+        },
+        'BAYERN': {
+            'webservice_url': 'https://www.statistikdaten.bayern.de/genesisWS'
+        },
+        #  'SACHSEN': {
+        #    'webservice_url': 'http://www.statistik.sachsen.de/...'
+        #  },
+        'BILDUNG': {
+            'webservice_url': 'https://www.bildungsmonitoring.de/bildungws'
         }
-        self.endpoints = {
-            'TestService': '/services/TestService?wsdl',
-            #'RechercheService': '/services/RechercheService?wsdl',
-            'RechercheService_2010': '/services/RechercheService_2010?wsdl',
-            'DownloadService': '/services/DownloadService?wsdl',
-            #'DownloadService_2010': '/services/DownloadService_2010?wsdl',
-            #'ExportService': '/services/ExportService?wsdl',
-            #'ExportService_2010': '/services/ExportService_2010?wsdl',
-            #'GEOMISService': '/services/GEOMISService?wsdl',
-            #'NutzerService': '/services/NutzerService?wsdl',
-            #'Version': '/services/Version?wsdl',
-        }
+    }
+
+    endpoints = {
+        'TestService': '/services/TestService?wsdl',
+        #  'RechercheService': '/services/RechercheService?wsdl',
+        'RechercheService_2010': '/services/RechercheService_2010?wsdl',
+        'DownloadService': '/services/DownloadService?wsdl',
+        #  'DownloadService_2010': '/services/DownloadService_2010?wsdl',
+        #  'ExportService': '/services/ExportService?wsdl',
+        #  'ExportService_2010': '/services/ExportService_2010?wsdl',
+        #  'GEOMISService': '/services/GEOMISService?wsdl',
+        #  'NutzerService': '/services/NutzerService?wsdl',
+        #  'Version': '/services/Version?wsdl',
+    }
+
+    def __init__(self, site, username=None, password=None, language='de'):
+        """
+        A genesis client allows to download metadata and table data (csv/xls) from a Genesis-website.
+        :param site: str, website to download from, has to be one of: `GenesisClient.sites`.
+        :param username: str, username of the page.
+        :param password: str, password of the page.
+        :param language: str, language identifier, currently only `de` was tested.
+        """
+
+        # Ensure valid site
         if site is None:
             raise Exception('No site given')
         if site not in self.sites:
-            sitekeys = ", ".join(sorted(self.sites.keys()))
-            raise ValueError('Site not known. Use one of %s.' % sitekeys)
+            site_keys = ", ".join(sorted(self.sites.keys()))
+            raise ValueError('Site not known. Use one of %s.' % site_keys)
+
         self.site = site
-        self.username = None
-        self.password = None
         self.service_clients = {}
+        self.base_params = {
+            'sprache': language,
+            'kennung': '',
+            'passwort': '',
+        }
         if username is not None:
-            self.username = username
+            self.base_params['kennung'] = username
         if password is not None:
-            self.password = password
+            self.base_params['passwort'] = password
 
-    def init_service_client(self, name):
+    def download_excel(self, table_code, regionalschluessel='', start_year=1900, end_year=2100, compress_result=False):
         """
-        Initializes a client for a certain endpoint, identified by name,
-        returns it and stores it internally for later re-use.
+        Download an Excel file as binary.
+        :param table_code: str, the code of the table to download.
+        :param regionalschluessel: str, regional key to subset.
+        :param start_year: int, the first year to download.
+        :param end_year: int, the last year to download.
+        :param compress_result: bool, if `True`, the data will be compressed.
+        :return: Binary array, contains the Excel file.
         """
-        if name not in self.service_clients:
-            url = (self.sites[self.site]['webservice_url']
-                  + self.endpoints[name])
-            self.service_clients[name] = suds.client.Client(url, retxml=True)
-        return self.service_clients[name]
+        client = self._init_service_client('DownloadService')
+        params = self._build_download_params(table_code, regionalschluessel, start_year, end_year, compress_result)
+        #  print(params)
+        result = client.service.ExcelDownload(**params)
+        return result.attachments[0].content
 
-    def test_service(self):
+    def download_csv(self, table_code, regionalschluessel='', start_year=1900, end_year=2100, compress_result=False):
         """
-        Calls functions for test purposes.
-        whoami and Exception handling.
+        Download a CSV file as UTF-8 string.
+        :param table_code: str, the code of the table to download.
+        :param regionalschluessel: str, regional key to subset.
+        :param start_year: int, the first year to download.
+        :param end_year: int, the last year to download.
+        :param compress_result: bool, if `True`, the data will be compressed.
+        :return: str, UTF-8, contains the csv string.
         """
-        client = self.init_service_client('TestService')
-        client.service.whoami()
-        try:
-            client.service.exception()
-        except suds.WebFault:
-            pass
+        client = self._init_service_client('DownloadService')
+        params = self._build_download_params(table_code, regionalschluessel, start_year, end_year, compress_result)
+        params.update({'format': 'csv'})
+        #  print(params)
+        result = client.service.TabellenDownload(**params)
+        return result.attachments[0].content.decode("utf-8")
 
-    def search(self, searchterm='*:*', limit=500, category='alle'):
+    def search(self, search_term='*:*', category='alle', limit=500):
         """
         Allows search for a resource (property, table, statistic, ...)
         by keyword.
@@ -80,15 +111,12 @@ class GenesisClient(object):
             "Zeitreihe" for time series,
             "Datenquader", "Merkmal", "Statistik"
         """
-        client = self.init_service_client('RechercheService_2010')
-        #print client
-        params = dict(luceneString=searchterm,
-                      kennung=self.username,
-                      passwort=self.password,
-                      listenLaenge=str(limit),
-                      sprache='de',
-                      kategorie=category
-                      )
+        client = self._init_service_client('RechercheService_2010')
+        params = self._clone_and_update_base_params({
+            'luceneString': search_term,
+            'kategorie': category,
+            'listenLaenge': str(limit)
+        })
         result = client.service.Recherche(**params)
         root = etree.fromstring(result)
         out = {
@@ -96,26 +124,26 @@ class GenesisClient(object):
             'results': []
         }
         for element in root.iter("trefferUebersicht"):
-            otype = element.find("objektTyp")
+            object_type = element.find("objektTyp")
             num = element.find("trefferAnzahl")
-            if otype is not None and num is not None:
-                out['meta'][otype.text] = int(num.text)
-        for element in root.iter("trefferListe"):
+            if object_type is not None and num is not None:
+                out['meta'][object_type.text] = int(num.text)
 
+        for element in root.iter("trefferListe"):
             code = element.find('EVAS')
             description = element.find('kurztext')
             name = element.find('name')
             if name is not None:
                 name = name.text
-            otype = element.find("objektTyp")
-            if otype is not None:
-                otype = otype.text
+            object_type = element.find("objektTyp")
+            if object_type is not None:
+                object_type = object_type.text
             if code is not None:
                 out['results'].append({
                     'id': code.text,
-                    'type': otype,
+                    'type': object_type,
                     'name': name,
-                    'description': clean(description.text)
+                    'description': self._clean(description.text)
                 })
         return out
 
@@ -125,25 +153,15 @@ class GenesisClient(object):
         filter='bev*' will return only terms starting with "bev". Can be used
         to implement search term auto-completion.
         """
-        client = self.init_service_client('RechercheService_2010')
-        #print client
-        params = dict(kennung=self.username,
-                      passwort=self.password,
-                      filter=filter,
-                      listenLaenge=str(limit),
-                      sprache='de')
+        client = self._init_service_client('RechercheService_2010')
+        params = self._clone_and_update_base_params({
+            'filter': filter,
+            'listenLaenge': str(limit)
+        })
+
         result = client.service.BegriffeKatalog(**params)
         root = etree.fromstring(result)
-        out = []
-        for element in root.iter("begriffeKatalogEintraege"):
-            code = element.find('code')
-            inhalt = element.find('inhalt')
-            if code is not None:
-                out.append({
-                    'id': code.text,
-                    'description': clean(inhalt.text)
-                })
-        return out
+        return self._parse_elements(root, 'begriffeKatalogEintraege')
 
     def properties(self, filter='*', criteria='Code', type="alle", limit=500):
         """
@@ -165,292 +183,220 @@ class GenesisClient(object):
             "alle" (default)
         area
         """
-        client = self.init_service_client('RechercheService_2010')
-        #print client
-        params = dict(kennung=self.username,
-                      passwort=self.password,
-                      filter=filter,
-                      kriterium=criteria,
-                      typ=type,
-                      bereich='Alle',
-                      listenLaenge=str(limit),
-                      sprache='de')
+        client = self._init_service_client('RechercheService_2010')
+        params = self._clone_and_update_base_params({
+            'filter': filter,
+            'kriterium': criteria,
+            'typ': type,
+            'bereich': 'Alle',
+            'listenLaenge': str(limit)
+        })
         result = client.service.MerkmalsKatalog(**params)
         root = etree.fromstring(result)
-        out = []
-        for element in root.iter("merkmalsKatalogEintraege"):
-            code = element.find('code')
-            inhalt = element.find('inhalt')
-            if code is not None:
-                out.append({
-                    'id': code.text,
-                    'description': clean(inhalt.text)
-                })
-        return out
+        return self._parse_elements(root, 'merkmalsKatalogEintraege')
 
-    def property_occurrences(self, property_code, selection='*',
-                             criteria="Code", limit=500):
+    def property_occurrences(self, property_code, selection='*', criteria="Code", limit=500):
         """
-        Retrieve occurences of properties. Use property_code to indicate the
+        Retrieve occurrences of properties. Use property_code to indicate the
         property. You can further narrow down the selection of occurences
         using the selection parameter which supports asterisk notation
         (e.g. selection='hs18*').
         """
-        client = self.init_service_client('RechercheService_2010')
-        params = dict(kennung=self.username,
-                      passwort=self.password,
-                      name=property_code,
-                      auswahl=selection,
-                      kriterium=criteria,
-                      bereich='Alle',
-                      listenLaenge=str(limit),
-                      sprache='de')
+        client = self._init_service_client('RechercheService_2010')
+        params = self._clone_and_update_base_params({
+            'name': property_code,
+            'auswahl': selection,
+            'kriterium': criteria,
+            'bereich': 'Alle',
+            'listenLaenge': str(limit)
+        })
         result = client.service.MerkmalAuspraegungenKatalog(**params)
         root = etree.fromstring(result)
-        out = []
-        for element in root.iter("merkmalAuspraegungenKatalogEintraege"):
-            code = element.find('code')
-            inhalt = element.find('inhalt')
-            if code is not None:
-                out.append({
-                    'id': code.text,
-                    'description': clean(inhalt.text)
-                })
-        return out
+        return self._parse_elements(root, 'merkmalAuspraegungenKatalogEintraege')
 
-    def property_data(self, property_code='*', selection='*',
-                             criteria="Code", limit=500):
-        client = self.init_service_client('RechercheService_2010')
-        params = dict(kennung=self.username,
-                      passwort=self.password,
-                      name=property_code,
-                      auswahl=selection,
-                      bereich='Alle',
-                      listenLaenge=str(limit),
-                      sprache='de')
+    def property_data(self, property_code='*', selection='*', criteria="Code", limit=500):
+        client = self._init_service_client('RechercheService_2010')
+        params = self._clone_and_update_base_params({
+            'name': property_code,
+            'auswahl': selection,
+            'bereich': 'Alle',
+            'listenLaenge': str(limit)
+        })
         result = client.service.MerkmalDatenKatalog(**params)
         root = etree.fromstring(result)
-        out = []
-        for element in root.iter("merkmalDatenKatalogEintraege"):
-            code = element.find('code')
-            inhalt = element.find('inhalt')
-            beschriftungstext = element.find('beschriftungstext')
-            if code is not None:
-                out.append({
-                    'id': code.text,
-                    'description': clean(inhalt.text),
-                    'longdescription': clean(beschriftungstext.text)
-                })
-        return out
+        return self._parse_elements(root, 'merkmalDatenKatalogEintraege', parse_long_description=True)
 
-    def property_statistics(self, property_code='*', selection='*',
-                             criteria="Code", limit=500):
-        client = self.init_service_client('RechercheService_2010')
-        params = dict(kennung=self.username,
-                      passwort=self.password,
-                      name=property_code,
-                      auswahl=selection,
-                      kriterium=criteria,
-                      bereich='Alle',
-                      listenLaenge=str(limit),
-                      sprache='de')
+    def property_statistics(self, property_code='*', selection='*', criteria="Code", limit=500):
+        client = self._init_service_client('RechercheService_2010')
+        params = self._clone_and_update_base_params({
+            'name': property_code,
+            'auswahl': selection,
+            'kriterium': criteria,
+            'bereich': 'Alle',
+            'listenLaenge': str(limit)
+        })
         result = client.service.MerkmalStatistikenKatalog(**params)
-        print result
+        print(result)
 
     def property_tables(self, property_code='*', selection='*', limit=500):
-        client = self.init_service_client('RechercheService_2010')
-        params = dict(kennung=self.username,
-                      passwort=self.password,
-                      name=property_code,
-                      auswahl=selection,
-                      bereich='Alle',
-                      listenLaenge=str(limit),
-                      sprache='de')
+        client = self._init_service_client('RechercheService_2010')
+        params = self._clone_and_update_base_params({
+            'name': property_code,
+            'auswahl': selection,
+            'bereich': 'Alle',
+            'listenLaenge': str(limit)
+        })
         result = client.service.MerkmalTabellenKatalog(**params)
-        print result
+        print(result)
 
     def statistics(self, filter='*', criteria='Code', limit=500):
         """
         Load information on statistics
         """
-        client = self.init_service_client('RechercheService_2010')
-        params = dict(kennung=self.username,
-                      passwort=self.password,
-                      filter=filter,
-                      kriterium=criteria,
-                      bereich='Alle',
-                      listenLaenge=str(limit),
-                      sprache='de')
+        client = self._init_service_client('RechercheService_2010')
+        params = self._clone_and_update_base_params({
+            'filter': filter,
+            'kriterium': criteria,
+            'bereich': 'Alle',
+            'listenLaenge': str(limit)
+        })
         result = client.service.StatistikKatalog(**params)
         root = etree.fromstring(result)
-        out = []
-        for element in root.iter("statistikKatalogEintraege"):
-            code = element.find('code')
-            inhalt = element.find('inhalt')
-            if code is not None:
-                out.append({
-                    'id': code.text,
-                    'description': clean(inhalt.text)
-                })
-        return out
+        return self._parse_elements(root, 'statistikKatalogEintraege')
 
     def statistic_data(self, statistic_code='*', selection='*', limit=500):
-        client = self.init_service_client('RechercheService_2010')
-        params = dict(kennung=self.username,
-                      passwort=self.password,
-                      name=statistic_code,
-                      auswahl=selection,
-                      bereich='Alle',
-                      listenLaenge=str(limit),
-                      sprache='de')
+        client = self._init_service_client('RechercheService_2010')
+        params = self._clone_and_update_base_params({
+            'name': statistic_code,
+            'auswahl': selection,
+            'bereich': 'Alle',
+            'listenLaenge': str(limit)
+        })
         result = client.service.StatistikDatenKatalog(**params)
         root = etree.fromstring(result)
-        out = []
-        for element in root.iter("statistikDatenKatalogEintraege"):
-            code = element.find('code')
-            inhalt = element.find('inhalt')
-            beschriftungstext = element.find('beschriftungstext')
-            if code is not None:
-                out.append({
-                    'id': code.text,
-                    'description': clean(inhalt.text),
-                    'longdescription': clean(beschriftungstext.text)
-                })
-        return out
+        return self._parse_elements(root, 'statistikDatenKatalogEintraege', parse_long_description=True)
 
     def statistic_properties(self, statistic_code='*', criteria='Code', selection='*', limit=500):
-        client = self.init_service_client('RechercheService_2010')
-        params = dict(kennung=self.username,
-                      passwort=self.password,
-                      name=statistic_code,
-                      auswahl=selection,
-                      kriterium=criteria,
-                      bereich='Alle',
-                      listenLaenge=str(limit),
-                      sprache='de')
+        client = self._init_service_client('RechercheService_2010')
+        params = self._clone_and_update_base_params({
+            'name': statistic_code,
+            'auswahl': selection,
+            'kriterium': criteria,
+            'bereich': 'Alle',
+            'listenLaenge': str(limit)
+        })
         result = client.service.StatistikMerkmaleKatalog(**params)
         root = etree.fromstring(result)
-        out = []
-        for element in root.iter("statistikMerkmaleKatalogEintraege"):
-            code = element.find('code')
-            inhalt = element.find('inhalt')
-            if code is not None:
-                out.append({
-                    'id': code.text,
-                    'description': clean(inhalt.text)
-                })
-        return out
+        return self._parse_elements(root, 'statistikMerkmaleKatalogEintraege')
 
     def statistic_tables(self, statistic_code='*', selection='*', limit=500):
-        client = self.init_service_client('RechercheService_2010')
-        params = dict(kennung=self.username,
-                      passwort=self.password,
-                      name=statistic_code,
-                      auswahl=selection,
-                      bereich='Alle',
-                      listenLaenge=str(limit),
-                      sprache='de')
+        client = self._init_service_client('RechercheService_2010')
+        params = self._clone_and_update_base_params({
+            'name': statistic_code,
+            'auswahl': selection,
+            'bereich': 'Alle',
+            'listenLaenge': str(limit)
+        })
         result = client.service.StatistikTabellenKatalog(**params)
         root = etree.fromstring(result)
-        out = []
-        for element in root.iter("statistikTabellenKatalogEintraege"):
-            code = element.find('code')
-            inhalt = element.find('inhalt')
-            if code is not None:
-                out.append({
-                    'id': code.text,
-                    'description': clean(inhalt.text)
-                })
-        return out
+        return self._parse_elements(root, 'statistikTabellenKatalogEintraege')
 
     def tables(self, filter='*', limit=500):
         """
         Retrieve information on tables
         """
-        client = self.init_service_client('RechercheService_2010')
-        params = dict(kennung=self.username,
-                      passwort=self.password,
-                      filter=filter,
-                      bereich='Alle',
-                      listenLaenge=str(limit),
-                      sprache='de')
+        client = self._init_service_client('RechercheService_2010')
+        params = self._clone_and_update_base_params({
+            'filter': filter,
+            'bereich': 'Alle',
+            'listenLaenge': str(limit)
+        })
         result = client.service.TabellenKatalog(**params)
         root = etree.fromstring(result)
-        out = []
-        for element in root.iter("tabellenKatalogEintraege"):
-            code = element.find('code')
-            inhalt = element.find('inhalt')
-            if code is not None:
-                out.append({
-                    'id': code.text,
-                    'description': clean(inhalt.text)
-                })
-        return out
+        return self._parse_elements(root, 'tabellenKatalogEintraege')
 
     def catalogue(self, filter='*', limit=500):
         """
         Retrieve metadata on data offerings. Can be filtered by code, e.g.
         filter='11111*' delivers all entries with codes starting with '11111'.
         """
-        client = self.init_service_client('RechercheService_2010')
-        params = dict(kennung=self.username,
-                      passwort=self.password,
-                      filter=filter,
-                      bereich='Alle',
-                      listenLaenge=str(limit),
-                      sprache='de'
-                      )
+        client = self._init_service_client('RechercheService_2010')
+        params = self._clone_and_update_base_params({
+            'filter': filter,
+            'bereich': 'Alle',
+            'listenLaenge': str(limit)
+        })
         result = client.service.DatenKatalog(**params)
         return result
 
-    def table_export(self, table_code,
-            regionalschluessel='',
-            format='csv'):
+    def test_service(self):
         """
-        Return data for a given table
+        Calls functions for test purposes.
+        Tests `whoami` and exception handling.
         """
-        client = self.init_service_client('DownloadService')
-        params = dict(kennung=self.username,
-                      passwort=self.password,
-                      name=table_code,
-                      bereich='Alle',
-                      format=format,
-                      komprimierung=False,
-                      startjahr='1900',
-                      endjahr='2100',
-                      zeitscheiben='',
-                      regionalschluessel=regionalschluessel,
-                      sachmerkmal='',
-                      sachschluessel='',
-                      sprache='de',
-                      )
-        result = None
-        if format == 'xls':
-            del params['format']
-            result = client.service.ExcelDownload(**params)
-            # Really nasty way to treat a multipart message...
-            # (room for improvement)
-            parts = result.split("\r\n")
-            for i in range(0, 12):
-                parts.pop(0)
-            parts.pop()
-            parts.pop()
-            return "\r\n".join(parts)
-        else:
-            result = client.service.TabellenDownload(**params)
-            parts = result.split(result.split("\r\n")[1])
-            data = parts[2].split("\r\n\r\n", 1)[-1]
-            #data = unicode(data.decode('latin-1'))
-            #data = unicode(data.decode('utf-8'))
-            return data
+        client = self._init_service_client('TestService')
+        client.service.whoami()
 
+        #  try:
+        #    client.service.exception()
+        #  except suds.WebFault:
+        #    pass
 
+    def _init_service_client(self, name):
+        """
+        Initializes a client for a certain endpoint, identified by name,
+        returns it and stores it internally for later re-use.
+        """
+        if name not in self.service_clients:
+            url = (self.sites[self.site]['webservice_url'] + self.endpoints[name])
+            
+            # Workaround: `zeep` does not support the `apachesoap:DataHandler` datatype
+            # -> replace by `xsd:base64Binary` (in WSDL file)
+            response = requests.get(url)
+            wsdl_string = response.text.replace('apachesoap:DataHandler', 'xsd:base64Binary')
+            with tempfile.NamedTemporaryFile() as tmp:
+                tmp.write(wsdl_string.encode("utf-8"))
+                self.service_clients[name] = Client(wsdl=tmp.name)
+        return self.service_clients[name]
 
-def clean(s):
-    """Clean up a string"""
-    if s is None:
-        return None
-    s = s.replace("\n", " ")
-    s = s.replace("  ", " ")
-    s = s.strip()
-    return s
+    def _clone_and_update_base_params(self, update_dict):
+        params = self.base_params.copy()
+        params.update(update_dict)
+        return params
+
+    def _build_download_params(self, table_code, regionalschluessel, start_year, end_year, compress_result):
+        return self._clone_and_update_base_params({
+            'name': table_code,
+            'bereich': 'Alle',
+            'komprimierung': compress_result,
+            'startjahr': str(start_year),
+            'endjahr': str(end_year),
+            'zeitscheiben': '',
+            'regionalschluessel': regionalschluessel,
+            'sachmerkmal': '',
+            'sachschluessel': ''
+        })
+
+    def _parse_elements(self, root, iteration_element_name, parse_long_description=False):
+        out = []
+        for element in root.iter(iteration_element_name):
+            code = element.find('code')
+            if code is not None:
+                new_element = {
+                    'id': code.text,
+                    'description': self._clean(element.find('inhalt').text)
+                }
+                if parse_long_description:
+                    new_element['longdescription'] = self._clean(element.find('beschriftungstext').text)
+                out.append(new_element)
+        return out
+
+    @staticmethod
+    def _clean(s):
+        """Clean up a string"""
+        if s is None:
+            return None
+        s = s.replace("\n", " ")
+        s = s.replace("  ", " ")
+        s = s.strip()
+        return s
