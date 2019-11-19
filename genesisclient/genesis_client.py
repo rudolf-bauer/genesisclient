@@ -4,6 +4,7 @@ import requests
 import tempfile
 from .parser import parse_csv
 import logging
+from .utils import filter_urllib3_logging
 
 
 class GenesisClient(object):
@@ -71,6 +72,11 @@ class GenesisClient(object):
         if password is not None:
             self.base_params['passwort'] = password
         self.drop_empty_rows_and_columns = drop_empty_rows_and_columns
+
+        # Workaround: disable ugly `urllib3` warning as log as there is no solution
+        # https://github.com/urllib3/urllib3/issues/800
+        # https://stackoverflow.com/questions/49338811/does-requests-properly-support-multipart-responses
+        filter_urllib3_logging()
 
     def download_excel(self, table_code, output_filename, start_year=1900, end_year=2100):
         """
