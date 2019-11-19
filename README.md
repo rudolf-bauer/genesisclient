@@ -8,20 +8,19 @@ The downloading of data is already working. Install using:
 pip install git+https://github.com/rudolf-bauer/genesisclient.git
 ```
 
-You can parse the data with `pandas`. However, there is a lot of overhead.
+You can download the result as a `.csv` or `.xls` file. Also, you can directly download and parse the data as a `pandas` dataframe.
 ```
 from genesisclient.genesis_client import GenesisClient
-import pandas as pd
-from io import BytesIO
-from io import StringIO
 
-gc = GenesisClient(site='LDNRW')
-csv = gc.download_csv('61111-07iz')
-pd.read_csv(StringIO(csv), sep=';', skiprows=8)
+gc = GenesisClient(site='DESTATIS', username='', password='')
 
-xls = gc.download_excel('61111-07iz')
-pd.read_excel(BytesIO(xls), skiprows=8)
+gc.download_csv('61111-07iz', 'data.csv')
+gc.download_excel('61111-07iz', 'data.xls')
+
+df = gc.download_dataframe('61111-07iz')
 ```
+
+Note that you need to register in order to use the `DESTATIS` API.
 
 # Original Readme.md
 
