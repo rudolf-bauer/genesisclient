@@ -1,23 +1,45 @@
 # PyGenesis
-This is a fork of:
+This library is a fork of:
 [GitHub - marians/genesisclient: A Genesis (DeStatis et. al.) client for Python](https://github.com/marians/genesisclient)
 
-The underlying wsdl library was migrated to `zeep` and the code was refactored. The work is still in progress.
-The downloading of data is already working. Install using:
+The aim of the project is to provide simplified data access to German statistical offices in Python using the so-called 
+[Genesis API](https://www.destatis.de/EN/Service/OpenData/_node.html). 
+The focus is on the Federal Statistical Office of Germany (Statistisches Bundesamt) with its online website 
+[destatis.de](destatis.de). This code represents an early stage of the development process. 
+Please report all bugs in the issues tabs.
+
+# Installation
+ 
+Currently only the github installation is supported:
 ```
 pip install git+https://github.com/rudolf-bauer/genesisclient.git
 ```
 
-You can download the result as a `.csv` or `.xls` file. Also, you can directly download and parse the data as a `pandas` dataframe.
+# Usage
+
+First, import the client class and create an object by specifying the site you want to access.
 ```
-from genesisclient.genesis_client import GenesisClient
+from pygenesis.py_genesis_client import PyGenesisClient
 
-gc = GenesisClient(site='DESTATIS', username='', password='')
-
-gc.download_csv('61111-07iz', 'data.csv')
-gc.download_excel('61111-07iz', 'data.xls')
-
-df = gc.download_dataframe('61111-07iz')
+client = PyGenesisClient(site='DESTATIS', username='', password='')
 ```
 
-Note that you need to register in order to use the `DESTATIS` API.
+Currently supported sites:
+
+`DESTATIS`: [Federal Statistical Office of Germany](www-genesis.destatis.de)
+
+`LDNRW`: [Statistical office of the German state North Rhine-Westphalia](https://www.landesdatenbank.nrw.de)
+
+For `DESTATIS` you need to provide a user and a password. You can register 
+[here](https://www-genesis.destatis.de/genesis/online?Menu=RegistrierungForm&REGKUNDENTYP=001). 
+
+Then, you can download and save the result as a `.csv` or `.xls` file. 
+Also, you can directly read the data as a parsed `pandas` dataframe.
+```
+client.download_csv('12411-0001', 'data.csv')
+client.download_excel('12411-0001', 'data.xls')
+
+df = client.read('12411-0001')
+```
+
+You can look up the table codes on the corresponding websites.
