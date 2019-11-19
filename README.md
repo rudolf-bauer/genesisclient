@@ -26,7 +26,7 @@ client = PyGenesisClient(site='DESTATIS', username='', password='')
 
 Currently supported sites:
 
-`DESTATIS`: [Federal Statistical Office of Germany](www-genesis.destatis.de)
+`DESTATIS`: [Federal Statistical Office of Germany](https://www-genesis.destatis.de)
 
 `LDNRW`: [Statistical office of the German state North Rhine-Westphalia](https://www.landesdatenbank.nrw.de)
 
