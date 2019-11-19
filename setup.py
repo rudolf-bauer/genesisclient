@@ -10,5 +10,4 @@ setup(name='genesisclient',
       url='https://github.com/rudolf-bauer/genesisclient.git',
       license="MIT",
       packages=['genesisclient'],
-      install_requires=['lxml', 'zeep', 'requests', 'tempfile']
-)
+      install_requires=['lxml', 'zeep', 'requests', 'tempfile', 'logging', 'pandas', 'numpy'])

@@ -2,6 +2,8 @@ from lxml import etree
 from zeep import Client
 import requests
 import tempfile
+from .parser import parse_csv
+import logging
 
 
 class GenesisClient(object):
@@ -32,7 +34,7 @@ class GenesisClient(object):
         #  'RechercheService': '/services/RechercheService?wsdl',
         'RechercheService_2010': '/services/RechercheService_2010?wsdl',
         'DownloadService': '/services/DownloadService?wsdl',
-        #  'DownloadService_2010': '/services/DownloadService_2010?wsdl',
+        'DownloadService_2010': '/services/DownloadService_2010?wsdl',
         #  'ExportService': '/services/ExportService?wsdl',
         #  'ExportService_2010': '/services/ExportService_2010?wsdl',
         #  'GEOMISService': '/services/GEOMISService?wsdl',
@@ -40,13 +42,14 @@ class GenesisClient(object):
         #  'Version': '/services/Version?wsdl',
     }
 
-    def __init__(self, site, username=None, password=None, language='de'):
+    def __init__(self, site, username=None, password=None, language='de', drop_empty_rows_and_columns=False):
         """
         A genesis client allows to download metadata and table data (csv/xls) from a Genesis-website.
         :param site: str, website to download from, has to be one of: `GenesisClient.sites`.
         :param username: str, username of the page.
         :param password: str, password of the page.
         :param language: str, language identifier, currently only `de` was tested.
+        :param drop_empty_rows_and_columns: bool, if True, a flag is send that promises to drop empty rows and columns.
         """
 
         # Ensure valid site
@@ -54,7 +57,7 @@ class GenesisClient(object):
             raise Exception('No site given')
         if site not in self.sites:
             site_keys = ", ".join(sorted(self.sites.keys()))
-            raise ValueError('Site not known. Use one of %s.' % site_keys)
+            raise ValueError('Site `%s` is unknown. Use one of %s.' % (site, site_keys))
 
         self.site = site
         self.service_clients = {}
@@ -67,39 +70,72 @@ class GenesisClient(object):
             self.base_params['kennung'] = username
         if password is not None:
             self.base_params['passwort'] = password
+        self.drop_empty_rows_and_columns = drop_empty_rows_and_columns
 
-    def download_excel(self, table_code, regionalschluessel='', start_year=1900, end_year=2100, compress_result=False):
+    def download_excel(self, table_code, output_filename, start_year=1900, end_year=2100):
+        """
+        Download an Excel file as binary and save to file.
+        :param table_code: str, the code of the table to download.
+        :param output_filename: str, name of the file to save the result to.
+        :param start_year: int, the first year to download.
+        :param end_year: int, the last year to download.
+        :return: None
+        """
+        xls_bytes = self._download_excel_bytes(table_code, start_year, end_year)
+        with open(output_filename, 'wb') as f:
+            f.write(xls_bytes)
+
+    def _download_excel_bytes(self, table_code, start_year=1900, end_year=2100):
         """
         Download an Excel file as binary.
         :param table_code: str, the code of the table to download.
-        :param regionalschluessel: str, regional key to subset.
         :param start_year: int, the first year to download.
         :param end_year: int, the last year to download.
-        :param compress_result: bool, if `True`, the data will be compressed.
         :return: Binary array, contains the Excel file.
         """
-        client = self._init_service_client('DownloadService')
-        params = self._build_download_params(table_code, regionalschluessel, start_year, end_year, compress_result)
-        #  print(params)
+        #  client = self._init_service_client('DownloadService')
+        client = self._init_service_client('DownloadService_2010')
+        params = self._build_download_params_2010(table_code, start_year, end_year)
         result = client.service.ExcelDownload(**params)
         return result.attachments[0].content
 
-    def download_csv(self, table_code, regionalschluessel='', start_year=1900, end_year=2100, compress_result=False):
+    def download_csv(self, table_code, output_filename, start_year=1900, end_year=2100):
+        """
+        Download a CSV file as UTF-8 string and save to file.
+        :param table_code: str, the code of the table to download.
+        :param output_filename: str, name of the file to save the result to.
+        :param start_year: int, the first year to download.
+        :param end_year: int, the last year to download.
+        :return: None
+        """
+        csv_string = self._download_csv_string(table_code, start_year, end_year)
+        with open(output_filename, 'w') as f:
+            f.write(csv_string)
+
+    def _download_csv_string(self, table_code, start_year=1900, end_year=2100):
         """
         Download a CSV file as UTF-8 string.
         :param table_code: str, the code of the table to download.
-        :param regionalschluessel: str, regional key to subset.
         :param start_year: int, the first year to download.
         :param end_year: int, the last year to download.
-        :param compress_result: bool, if `True`, the data will be compressed.
         :return: str, UTF-8, contains the csv string.
         """
-        client = self._init_service_client('DownloadService')
-        params = self._build_download_params(table_code, regionalschluessel, start_year, end_year, compress_result)
-        params.update({'format': 'csv'})
-        #  print(params)
+        client = self._init_service_client('DownloadService_2010')
+        params = self._build_download_params_2010(table_code, start_year, end_year)
+        params.update({'format': 'datencsv'})
         result = client.service.TabellenDownload(**params)
         return result.attachments[0].content.decode("utf-8")
+
+    def download_dataframe(self, table_code, start_year=1900, end_year=2100,
+                           skip_header_rows=0, na_values=['-', '/', 'x', '.', '...']):
+        csv_string = self._download_csv_string(table_code, start_year, end_year)
+        return parse_csv(csv_string, skip_header_rows=skip_header_rows, na_values=na_values)
+
+    def download_timeseries(self, table_code, start_year=1900, end_year=2100):
+        client = self._init_service_client('DownloadService_2010')
+        params = self._build_download_params_timeseries_2010(table_code, start_year, end_year)
+        result = client.service.ZeitreihenDownload(**params)
+        return result
 
     def search(self, search_term='*:*', category='alle', limit=500):
         """
@@ -349,6 +385,7 @@ class GenesisClient(object):
         """
         if name not in self.service_clients:
             url = (self.sites[self.site]['webservice_url'] + self.endpoints[name])
+            logging.info("Downloading WSDL from url: `%s`" % url)
             
             # Workaround: `zeep` does not support the `apachesoap:DataHandler` datatype
             # -> replace by `xsd:base64Binary` (in WSDL file)
@@ -357,6 +394,7 @@ class GenesisClient(object):
             with tempfile.NamedTemporaryFile() as tmp:
                 tmp.write(wsdl_string.encode("utf-8"))
                 self.service_clients[name] = Client(wsdl=tmp.name)
+            logging.info("Initialized site: `%s`" % name)
         return self.service_clients[name]
 
     def _clone_and_update_base_params(self, update_dict):
@@ -364,17 +402,65 @@ class GenesisClient(object):
         params.update(update_dict)
         return params
 
-    def _build_download_params(self, table_code, regionalschluessel, start_year, end_year, compress_result):
+    def _build_download_params(self, table_code, start_year, end_year):
         return self._clone_and_update_base_params({
             'name': table_code,
             'bereich': 'Alle',
-            'komprimierung': compress_result,
+            'komprimierung': self.drop_empty_rows_and_columns,
             'startjahr': str(start_year),
             'endjahr': str(end_year),
             'zeitscheiben': '',
-            'regionalschluessel': regionalschluessel,
+            'regionalschluessel': '',
             'sachmerkmal': '',
             'sachschluessel': ''
+        })
+
+    def _build_download_params_2010(self, table_code, start_year, end_year):
+        return self._clone_and_update_base_params({
+            'name': table_code,
+            'bereich': 'Alle',
+            'komprimieren': self.drop_empty_rows_and_columns,
+            'transponieren': False,
+            'startjahr': str(start_year),
+            'endjahr': str(end_year),
+            'zeitscheiben': '',
+            'regionalmerkmal': '',
+            'regionalschluessel': '',
+            'sachmerkmal': '',
+            'sachschluessel': '',
+            'sachmerkmal2': '',
+            'sachschluessel2': '',
+            'sachmerkmal3': '',
+            'sachschluessel3': '',
+            'auftrag': False,
+            'stand': ''
+        })
+
+    def _build_download_params_timeseries_2010(self, table_code, start_year, end_year):
+        return self._clone_and_update_base_params({
+            'name': table_code,
+            'format': 'csv',
+            'bereich': 'Alle',
+            'komprimieren': self.drop_empty_rows_and_columns,
+            'transponieren': False,
+            'startjahr': str(start_year),
+            'endjahr': str(end_year),
+            'zeitscheiben': '',
+            'inhalte': '',
+            'regionalmerkmal': '',
+            'regionalschluessel': '',
+            'regionalschluesselcode': '',
+            'sachmerkmal': '',
+            'sachschluessel': '',
+            'sachschluesselcode': '',
+            'sachmerkmal2': '',
+            'sachschluessel2': '',
+            'sachschluesselcode2': '',
+            'sachmerkmal3': '',
+            'sachschluessel3': '',
+            'sachschluesselcode3': '',
+            'auftrag': False,
+            'stand': ''
         })
 
     def _parse_elements(self, root, iteration_element_name, parse_long_description=False):
