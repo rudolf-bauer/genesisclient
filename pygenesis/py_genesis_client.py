@@ -42,7 +42,6 @@ class PyGenesisClient(object):
             raise ValueError('Site `%s` is unknown. Use one of %s.' % (site, site_keys))
 
         self.site = site
-        self.zeep_client = self._init_service_client(site)
         self.service_clients = {}
         self.base_params = {
             'sprache': language,
