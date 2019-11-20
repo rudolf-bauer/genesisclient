@@ -1,8 +1,9 @@
-from zeep import Client
-import requests
+import os
 import tempfile
-from .parser import parse_csv
+import requests
 import logging
+from zeep import Client
+from .parser import parse_csv
 from .utils import filter_urllib3_logging
 
 
@@ -147,10 +148,24 @@ class PyGenesisClient(object):
             # -> replace by `xsd:base64Binary` (in WSDL file)
             response = requests.get(url)
             wsdl_string = response.text.replace('apachesoap:DataHandler', 'xsd:base64Binary')
-            with tempfile.NamedTemporaryFile() as tmp:
+
+            # `zeep` only allows to read a url or file, not a plain string
+            # -> write into temp file and let `zeep` client read the file
+            # Note: Windows does not allow to open a temp file a second time
+            # -> Do not delete the file on close, delete manually later
+            # See: https://docs.python.org/3/library/tempfile.html
+            tmp_filename = None
+            with tempfile.NamedTemporaryFile(delete=False) as tmp:
+                tmp_filename = tmp.name
                 tmp.write(wsdl_string.encode("utf-8"))
-                self.service_clients[name] = Client(wsdl=tmp.name)
+
+            # Initialize client by reading the temp file
+            self.service_clients[name] = Client(wsdl=tmp_filename)
             logging.info("Initialized site: `%s`" % name)
+
+            # Remove temp file manually
+            os.remove(tmp_filename)
+
         return self.service_clients[name]
 
     def _clone_and_update_base_params(self, update_dict):

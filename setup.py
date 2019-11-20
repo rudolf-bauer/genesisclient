@@ -3,7 +3,7 @@
 from setuptools import setup
 
 setup(name='pygenesis',
-      version='0.0.1',
+      version='0.0.2',
       description='PyGenesis - get access to german statistical offices using the genesis API',
       long_description='The aim of the project is to provide simplified data access to German statistical offices in '
                        'Python using the so-called '
